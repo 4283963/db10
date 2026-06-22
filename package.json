@@ -1,0 +1,28 @@
+{
+  "name": "video-batch-renamer",
+  "version": "1.0.0",
+  "description": "本地自媒体视频素材批量重命名和标签归档工具",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
+    "electron:prod": "cross-env NODE_ENV=production electron .",
+    "start": "concurrently -k \"npm run dev\" \"npm run electron\""
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^31.0.2",
+    "vite": "^5.3.1",
+    "wait-on": "^7.2.0"
+  }
+}
