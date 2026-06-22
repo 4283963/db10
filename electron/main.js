@@ -1,8 +1,22 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, shell, Notification } = require('electron')
 const fs = require('fs')
 const path = require('path')
 
 let mainWindow = null
+
+function sendNotification(title, body) {
+  if (!Notification.isSupported()) {
+    console.log('[main] 当前系统不支持通知')
+    return
+  }
+  const notification = new Notification({
+    title,
+    body,
+    silent: false
+  })
+  notification.show()
+  console.log('[main] 已发送系统通知:', title, '-', body)
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -110,6 +124,25 @@ ipcMain.handle('files:rename', async (_event, files, prefix) => {
       })
     }
   }
+
+  const total = results.length
+  const successCount = results.filter(r => r.success && !r.skipped).length
+  const skippedCount = results.filter(r => r.skipped).length
+  const failCount = results.filter(r => !r.success).length
+
+  let title, body
+  if (failCount > 0) {
+    title = '批量重命名部分失败'
+    body = `共处理 ${total} 个文件，成功 ${successCount} 个，跳过 ${skippedCount} 个，失败 ${failCount} 个`
+  } else if (successCount === 0 && skippedCount > 0) {
+    title = '批量重命名已完成'
+    body = `共处理 ${total} 个文件，全部跳过（文件名未变化）`
+  } else {
+    title = '批量重命名已完成'
+    body = `共处理 ${total} 个文件，成功 ${successCount} 个${skippedCount > 0 ? `，跳过 ${skippedCount} 个` : ''}`
+  }
+
+  sendNotification(title, body)
 
   return results
 })
