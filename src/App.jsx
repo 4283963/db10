@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react'
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 
 function getExtname(p) {
   const idx = p.lastIndexOf('.')
@@ -21,13 +21,92 @@ function getDirname(p) {
   return idx > 0 ? p.slice(0, idx) : p
 }
 
+function getElectronAPI() {
+  if (typeof window === 'undefined') return null
+  return window.electronAPI || null
+}
+
+function isElectronEnv() {
+  const api = getElectronAPI()
+  return !!(api && api.isElectron)
+}
+
+function EnvAlert() {
+  return (
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      background: '#fef2f2',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      zIndex: 9999
+    }}>
+      <div style={{
+        maxWidth: 520,
+        background: '#fff',
+        padding: 32,
+        borderRadius: 16,
+        boxShadow: '0 10px 40px rgba(0,0,0,0.1)',
+        border: '1px solid #fee2e2'
+      }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>⚠️</div>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: '#b91c1c', marginBottom: 12 }}>
+          请通过 Electron 启动应用
+        </h2>
+        <p style={{ fontSize: 14, color: '#374151', lineHeight: 1.7, marginBottom: 12 }}>
+          当前检测到 <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: 13 }}>window.electronAPI</code> 不存在。
+          这说明你是在普通浏览器中打开，而 preload 脚本只在 Electron 窗口中才会注入。
+        </p>
+        <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.7, marginBottom: 20 }}>
+          <div style={{ marginBottom: 6, fontWeight: 500, color: '#374151' }}>正确的启动方式：</div>
+          <div style={{
+            background: '#1f2937',
+            color: '#e5e7eb',
+            padding: 12,
+            borderRadius: 8,
+            fontFamily: 'Menlo, monospace',
+            fontSize: 12.5
+          }}>
+            cd /Users/kl/Documents/trae_projects2/db10<br/>
+            npm start
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: '#9ca3af' }}>
+          提示：<code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4 }}>npm start</code> 会同时启动 Vite + Electron 窗口
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
+  const [envChecked, setEnvChecked] = useState(false)
+  const [electronReady, setElectronReady] = useState(false)
   const [files, setFiles] = useState([])
   const [prefix, setPrefix] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [status, setStatus] = useState(null)
   const inputRef = useRef(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const ready = isElectronEnv()
+      setElectronReady(ready)
+      setEnvChecked(true)
+      if (ready) {
+        console.log('[App] ✅ Electron API 检测通过，接口列表:', Object.keys(getElectronAPI()))
+      } else {
+        console.error('[App] ❌ 未检测到 window.electronAPI，请通过 Electron 启动')
+        console.log('[App]   window.electronAPI =', window.electronAPI)
+      }
+    }, 100)
+    return () => clearTimeout(t)
+  }, [])
+
+  const api = getElectronAPI()
 
   const previewFiles = useMemo(() => {
     if (!prefix.trim()) {
@@ -64,15 +143,16 @@ function App() {
   }, [files])
 
   const handleSelectFiles = useCallback(async () => {
+    if (!api) return
     try {
-      const selected = await window.electronAPI.selectFiles()
+      const selected = await api.selectFiles()
       if (selected && selected.length > 0) {
         addFiles(selected)
       }
     } catch (err) {
       setStatus({ type: 'error', text: `选择文件失败: ${err.message}` })
     }
-  }, [addFiles])
+  }, [api, addFiles])
 
   const handleDrop = useCallback((e) => {
     e.preventDefault()
@@ -106,13 +186,15 @@ function App() {
   }, [])
 
   const handleRename = useCallback(async () => {
-    if (files.length === 0) return
+    if (!api || files.length === 0) return
     setIsProcessing(true)
     setStatus({ type: 'info', text: '正在重命名...' })
 
     try {
       const filePaths = previewFiles.map(f => f.path)
-      const results = await window.electronAPI.renameFiles(filePaths, prefix)
+      console.log('[App] 发起重命名请求, 文件路径:', filePaths, '前缀:', prefix)
+      const results = await api.renameFiles(filePaths, prefix)
+      console.log('[App] 主进程返回结果:', results)
 
       const successCount = results.filter(r => r.success && !r.skipped).length
       const skippedCount = results.filter(r => r.skipped).length
@@ -145,19 +227,33 @@ function App() {
         text: msg
       })
     } catch (err) {
+      console.error('[App] 重命名异常:', err)
       setStatus({ type: 'error', text: `重命名失败: ${err.message}` })
     } finally {
       setIsProcessing(false)
     }
-  }, [files, previewFiles, prefix])
+  }, [api, files, previewFiles, prefix])
 
   const handleOpenLog = useCallback(async () => {
+    if (!api) return
     try {
-      await window.electronAPI.openLogFile()
+      await api.openLogFile()
     } catch (err) {
       setStatus({ type: 'error', text: `打开日志失败: ${err.message}` })
     }
-  }, [])
+  }, [api])
+
+  if (!envChecked) {
+    return (
+      <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>
+        正在检测 Electron 环境...
+      </div>
+    )
+  }
+
+  if (!electronReady) {
+    return <EnvAlert />
+  }
 
   return (
     <div className="app">
